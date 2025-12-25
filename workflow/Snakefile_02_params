@@ -1,0 +1,36 @@
+
+include: "rules/preliminaries.smk"
+
+
+rule all:
+    input:
+        f"{BASEDIR}/00_metadata/param_available_latlons_manifest.csv",
+        space_done = f"{BASEDIR}/00_metadata/cmip_space.done"
+
+
+# Main computations
+include: "rules/run04_parameterize.smk"
+include: "rules/run05_coarsescale.smk"
+
+
+checkpoint discover_cmip_latlon_space:
+    input:
+        upsampled = f"{BASEDIR}/00_metadata/upsampled_data_manifest.csv",
+        latlons = f"{BASEDIR}/00_metadata/param_available_latlons_manifest.csv"
+    output:
+        manifest = f"{BASEDIR}/00_metadata/valid_cmip_lat_lons_manifest.tsv"
+    script:
+        "scripts/buildwildcards.py"
+
+# Trigger checkpoint evaluation
+
+def cmip_space_input(_):
+    # This is legal and forces the checkpoint to run
+    return checkpoints.discover_cmip_latlon_space.get().output.manifest
+
+
+rule collect_cmip_space:
+    input:
+        cmip_space_input
+    output:
+        touch(f"{BASEDIR}/00_metadata/cmip_space.done")

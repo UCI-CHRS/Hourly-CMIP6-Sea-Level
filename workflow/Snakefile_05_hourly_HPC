@@ -1,0 +1,313 @@
+
+
+import os
+from pathlib import Path
+import yaml
+import pandas as pd
+
+configfile: "config/config.yml"
+configfile: "config/directories.yml"
+configfile: "config/metadata.yml"
+
+# Get parameter sets from config file
+SRC_CONFIG = config['metadata_keys'][config['obs_source_params']]
+GRD_CONFIG = config['metadata_keys'][config['grid_params']]
+DIPMAC_CONFIG = config['metadata_keys'][config['dipmac_params']]
+BASEDIR = config['BASE_DATA_PATH']
+
+SCRIPTDIR = Path(__file__).parent / "scripts"
+
+
+# Files for run06 -----
+manifest_file = f"{BASEDIR}/00_metadata/valid_cmip_lat_lons_manifest.tsv"
+df = pd.read_csv(manifest_file, sep="\t")
+hourly_files = []
+for r in df.itertuples():
+    for margfamily in config['comboparams']['marginalfamilies']:
+        for acsfamily in config['comboparams']['acsfamilies']:
+            f_daily = (
+                f"{BASEDIR}/05_cmip/{config['grid_params']}_{config['obs_source_params']}_{config['dipmac_params']}/"
+                f"{r.model}_{r.ripf}_{r.exp}/"
+                f"ntr_daily_lat_{r.lat}_lon_{r.lon}.csv"
+            )
+            marg_df = (
+                f"{BASEDIR}/05_cmip/{config['grid_params']}_"
+                f"{config['obs_source_params']}_{config['dipmac_params']}/"
+                f"{r.model}_{r.ripf}_{r.exp}/"
+                f"ntr_cmip_params_marg_{margfamily}_lat_{r.lat}_lon_{r.lon}.csv"
+            )
+            acs_df = (
+                f"{BASEDIR}/04_params/dipmac_regression/"
+                f"{config['grid_params']}/{config['obs_source_params']}/"
+                f"{config['dipmac_params']}/"
+                f"lat_{r.lat}_lon_{r.lon}_ntr_hourly_dipmac_acs_params_{acsfamily}.csv"
+            )
+            f_hourly = (
+                f"{BASEDIR}/05_cmip/{config['grid_params']}_{config['obs_source_params']}_{config['dipmac_params']}/"
+                f"{r.model}_{r.ripf}_{r.exp}/"
+                f"ntr_hourly_lat_{r.lat}_lon_{r.lon}_marg_{margfamily}_acs_{acsfamily}.csv"
+            )
+            if (
+                (os.stat(f_daily).st_size > 0) and
+                (os.stat(marg_df).st_size > 0) and
+                (os.stat(acs_df).st_size > 0)
+            ):
+                hourly_files.append(f_hourly)
+
+
+rule all:
+    input:
+        [
+            f"{BASEDIR}/06_final/data/"
+            f"{row.model}_{row.ripf}_{row.exp}_{m}_{a}_twl.nc"
+            for _, row in df.iterrows()
+            for m in config["comboparams"]["marginalfamilies"]
+            for a in config["comboparams"]["acsfamilies"]
+        ]
+
+
+rule dipmacrun:
+    input:
+        marg_params = (
+            f"{BASEDIR}/05_cmip/{config['grid_params']}_"
+            f"{config['obs_source_params']}_{config['dipmac_params']}/"
+            "{model}_{ripf}_{exp}/"
+            "ntr_cmip_params_marg_{margfamily}_lat_{lat}_lon_{lon}.csv"
+        ),
+        dipmac_actf_cache = (
+            f"{BASEDIR}/05_cmip/{config['grid_params']}_"
+            f"{config['obs_source_params']}_{config['dipmac_params']}/"
+            "cache/cmip_dipmac_cache_actf_marg_{margfamily}.pkl"
+        ),
+        acs_params_hourly_obs = (
+            f"{BASEDIR}/04_params/dipmac_regression/"
+            f"{config['grid_params']}/{config['obs_source_params']}/"
+            f"{config['dipmac_params']}/"
+            "lat_{lat}_lon_{lon}_ntr_hourly_dipmac_acs_params_{acsfamily}.csv"
+        ),
+        daily_ntr_cmip = (
+            f"{BASEDIR}/05_cmip/{config['grid_params']}_"
+            f"{config['obs_source_params']}_{config['dipmac_params']}/"
+            "{model}_{ripf}_{exp}/"
+            "ntr_daily_lat_{lat}_lon_{lon}.csv"
+        )
+    output:
+        hourly_ntr = (
+            f"{BASEDIR}/05_cmip/{config['grid_params']}_"
+            f"{config['obs_source_params']}_{config['dipmac_params']}/"
+            "{model}_{ripf}_{exp}/"
+            "ntr_hourly_lat_{lat}_lon_{lon}_marg_{margfamily}_acs_{acsfamily}.csv"
+        )
+    params:
+        lagmax = DIPMAC_CONFIG['lagmax'],
+        startyear = SRC_CONFIG['startyear'],
+        dipmac_nkblocks_cache_npy = (
+            f"{BASEDIR}/05_cmip/{config['grid_params']}_"
+            f"{config['obs_source_params']}_{config['dipmac_params']}/"
+            "cache/cmip_dipmac_cache_nkblocks_marg_{margfamily}_mmap/"
+        )
+    resources:
+        mem_mb = 12000
+    script:
+        "scripts/run06e_dipmac_run.py"
+
+
+rule run06:
+    input:
+        hourly_files
+    output:
+        touch(f"{BASEDIR}/00_metadata/run06makesealevel.done")
+
+
+rule copy_ncs:
+    input:
+        f"{BASEDIR}/00_metadata/run06makesealevel.done",
+        regression_hf = (
+            f"{BASEDIR}/04_params/dipmac_regression/"
+            f"{config['grid_params']}/{config['obs_source_params']}/"
+            "ntr_daily_regression.nc"
+        ),
+        regression_lf = (
+            f"{BASEDIR}/04_params/dipmac_regression/"
+            f"{config['grid_params']}/{config['obs_source_params']}/"
+            "ntr_monthly_regression.nc"
+        ),
+        dipmac_acs = expand(
+            f"{BASEDIR}/04_params/dipmac_regression/"
+            f"{config['grid_params']}/{config['obs_source_params']}/"
+            f"{config['dipmac_params']}/"
+            "ntr_hourly_dipmac_acs_params_{acsfamily}.nc",
+            acsfamily=config['comboparams']['acsfamilies']
+        ),
+        dipmac_marg_hourly = expand(
+            f"{BASEDIR}/04_params/dipmac_regression/"
+            f"{config['grid_params']}/{config['obs_source_params']}/"
+            f"{config['dipmac_params']}/"
+            "ntr_hourly_dipmac_marg_params_{margfamily}.nc",
+            margfamily=config['comboparams']['marginalfamilies']
+        ),
+    output:
+        regression_hf = f"{BASEDIR}/06_final/params/ntr_daily_hf_regression.nc",
+        regression_lf = f"{BASEDIR}/06_final/params/ntr_daily_lf_regression.nc",
+        dipmac_marg_hourly = expand(
+            f"{BASEDIR}/06_final/params/ntr_hourly_dipmac_marg_params_{{marg}}.nc",
+            marg=config['comboparams']['marginalfamilies']
+        ),
+        dipmac_acs = expand(
+            f"{BASEDIR}/06_final/params/ntr_hourly_dipmac_acs_params_{{acs}}.nc",
+            acs=config['comboparams']['acsfamilies']
+        )
+    params:
+        paramdir = Path(f"{BASEDIR}/06_final/params")
+    run:
+        from pathlib import Path
+        import shutil
+        # Copy over param .nc files
+        param_dir = params['paramdir']
+
+        def copy_and_rename(oldpath: Path, newpath: Path, oldname: str, newname: str):
+            shutil.copy(oldpath.joinpath(oldname), newpath.joinpath(newname))
+        copy_and_rename(
+            Path(input['regression_hf']).parent, param_dir,
+            Path(input['regression_hf']).name, "ntr_daily_hf_regression.nc"
+        )
+        copy_and_rename(
+            Path(input['regression_lf']).parent, param_dir,
+            Path(input['regression_lf']).name, "ntr_daily_lf_regression.nc"
+        )
+        for f in input['dipmac_marg_hourly'] + input['dipmac_acs']:
+            copy_and_rename(Path(f).parent, param_dir,
+                            Path(f).name, Path(f).name)
+
+
+rule copy_all_tides:
+    input:
+        # f"{BASEDIR}/00_metadata/run06makesealevel.done"
+        f"{BASEDIR}/00_metadata/touchfiles/upsample.done"
+    output:
+        tides = f"{BASEDIR}/06_final/data/tides.nc"
+    params:
+        tide_path = (
+            f"{BASEDIR}/03_upsampleddata/{config['grid_params']}/"
+            f"obs_ocean_{SRC_CONFIG['obs_ocean_source']}"
+        )
+    run:
+        from pathlib import Path
+        import pandas as pd
+        import xarray as xr
+        tide_files = list(Path(params['tide_path']).glob(f"*_hourly_*.nc"))
+        tide_df_list = pd.concat([
+            (xr.open_dataset(f)['tides']
+               .to_dataframe()
+               .dropna()
+             )
+            for f in tide_files
+        ], dim="time")
+        tides = tides.to_xarray()
+        tides.to_netcdf(output['tides'])
+
+
+rule combine_ntr:
+    """Combine NTR csvs into one .nc. Trigger copy_ncs before running this rule."""
+    input:
+        f"{BASEDIR}/00_metadata/run06makesealevel.done",
+        regression_hf = f"{BASEDIR}/06_final/params/ntr_daily_hf_regression.nc",
+        regression_lf = f"{BASEDIR}/06_final/params/ntr_daily_lf_regression.nc",
+        dipmac_marg_hourhly = expand(
+            f"{BASEDIR}/06_final/params/ntr_hourly_dipmac_marg_params_{{marg}}.nc",
+            marg=config['comboparams']['marginalfamilies']
+        ),
+        dipmac_acs = expand(
+            f"{BASEDIR}/06_final/params/ntr_hourly_dipmac_acs_params_{{acs}}.nc",
+            acs=config['comboparams']['acsfamilies']
+        )
+    params:
+        ntr_csv_dir = (
+            f"{BASEDIR}/05_cmip/{config['grid_params']}_"
+            f"{config['obs_source_params']}_{config['dipmac_params']}/"
+            "{model}_{ripf}_{exp}/"
+        ),
+    output:
+        ntr = (
+            f"{BASEDIR}/06_final/data/{{model}}_{{ripf}}_{{exp}}_{{marg}}_{{acs}}_ntr.nc"
+        )
+    resources:
+        mem_mb = 12000
+    script:
+        "scripts/run07a_combinentr.py"
+
+
+rule get_tides:
+    input:
+        # f"{BASEDIR}/00_metadata/run06makesealevel.done",
+        tides = f"{BASEDIR}/06_final/data/tides.nc",
+        ntr = (
+            f"{BASEDIR}/06_final/data/{{model}}_{{ripf}}_{{exp}}_{{marg}}_{{acs}}_ntr.nc"
+        )
+    output:
+        tides = f"{BASEDIR}/06_final/data/{{model}}_{{ripf}}_{{exp}}_{{marg}}_{{acs}}_tides.nc"
+    resources:
+        mem_mb = 12000
+    run:
+        from pathlib import Path
+        import pandas as pd
+        import xarray as xr
+        ntr = xr.open_dataset(input['ntr'], chunks={'time': 100})
+        x_vals, y_vals, t_vals = ntr.x, ntr.y, ntr.time
+        tides = xr.open_dataset(input['tides'])
+        tides['time'] = pd.to_datetime(tides['time'])
+        tides = tides.sel(x=x_vals, y=y_vals, time=t_vals)
+        tides.attrs = {
+            'tides': "Hourly astronomical tides."
+        }
+        tides = tides.compute()
+        tides.to_netcdf(output['tides'])
+
+
+rule interpolate_msl:
+    input:
+        # f"{BASEDIR}/00_metadata/run06makesealevel.done",
+        msl_monthly = (
+            f"{BASEDIR}/05_cmip/{config['grid_params']}_"
+            f"{config['obs_source_params']}_{config['dipmac_params']}/"
+            "{model}_{ripf}_{exp}/msl_monthly.nc"
+        ),
+        ntr = (
+            f"{BASEDIR}/06_final/data/{{model}}_{{ripf}}_{{exp}}_{{marg}}_{{acs}}_ntr.nc"
+        )
+    output:
+        msl_hourly = (
+            f"{BASEDIR}/06_final/data/{{model}}_{{ripf}}_{{exp}}_{{marg}}_{{acs}}_msl.nc"
+        )
+    resources:
+        mem_mb = 12000
+    script:
+        "scripts/run07b_interpolatemsl.py"
+
+
+def DATA_DIR(wc):
+    return Path(
+        f"{BASEDIR}/05_cmip/{config['grid_params']}_"
+        f"{config['obs_source_params']}_{config['dipmac_params']}/"
+        f"{wc.model}_{wc.ripf}_{wc.exp}"
+    )
+
+
+rule compiletwl:
+    """Input is the makesealevel touchfile"""
+    input:
+        tides_hourly = f"{BASEDIR}/06_final/data/{{model}}_{{ripf}}_{{exp}}_{{marg}}_{{acs}}_tides.nc",
+        msl_hourly = (
+            f"{BASEDIR}/06_final/data/{{model}}_{{ripf}}_{{exp}}_{{marg}}_{{acs}}_msl.nc"
+        ),
+        ntr_hourly = (
+            f"{BASEDIR}/06_final/data/{{model}}_{{ripf}}_{{exp}}_{{marg}}_{{acs}}_ntr.nc"
+        )
+    output:
+        f"{BASEDIR}/06_final/data/{{model}}_{{ripf}}_{{exp}}_{{marg}}_{{acs}}_twl.nc"
+    params:
+        data_dir = DATA_DIR
+    resources:
+        mem_mb = 12000
+    script:
+        "scripts/run07c_compiletwl.py"

@@ -1,0 +1,105 @@
+### --------------------------------------------------------------------
+### Grouped parameter settings -----------------------------------------
+### --------------------------------------------------------------------
+grid_params: grd001
+obs_source_params: src001
+dipmac_params: dipmac001
+BASE_DATA_PATH: /media/annika/blue/cmipsl
+HOME_DIRECTORY: /home/annika
+### --------------------------------------------------------------------
+
+### --------------------------------------------------------------------
+## Combinations of parameters: for running multiple at once
+### --------------------------------------------------------------------
+comboparams:
+  marginalfamilies: 
+    - skewnorm
+    - t  # gamma
+  acsfamilies:
+    - weibull
+    - paretoII
+  cmipexperiments:  
+    attribution: ["historical", "hist-nat"]  # attribution
+    projections: ["historical", "ssp126", "ssp245", "ssp370", "ssp434", "ssp585"]  # projections
+
+metadata_keys:
+  ### ------------------------------------------------------------------
+  ## bbox: xmin, ymin, xmax, ymax coordinates of spatial bounding box 
+  ### ------------------------------------------------------------------
+  conus:  # Contiguous United States
+    xmin: -127
+    ymin: 22
+    xmax: -64
+    ymax: 52
+  sf:     # San Francisco, California, USA
+    xmin: -125
+    ymin: 36
+    xmax: -119
+    ymax: 39
+  ny:     # New York, USA
+    xmin: -77
+    ymin: 39
+    xmax: -70
+    ymax: 44
+  east_coast: # United States east coast
+    xmin: -88
+    ymin: 23
+    xmax: -59
+    ymax: 50
+  west_coast: # United States west coast
+    xmin: -131
+    ymin: 30
+    xmax: -114
+    ymax: 52
+  gulf_coast: # United States gulf coast
+    xmin: -102
+    ymin: 22
+    xmax: -75
+    ymax: 32
+  nino34:
+    xmin: -170
+    ymin: -5
+    xmax: -120
+    ymax: 5
+  # nino:  # Encapsulates the NINO1+2, 3, 3.4, 4 regions.
+  #   xmin: 160
+  #   ymin: -10
+  #   xmax: -80
+  #   ymax: 5
+
+  ### ------------------------------------------------------------------
+  ## grid_params: upsampling grid and moving window mapping ------------
+  ### ------------------------------------------------------------------
+  grd001:
+    gridname: 'n_n96_192_x_144_ll'
+    ngrids_window: 1
+    ndays_window: 30
+  grd002:
+    gridname: 'm_stan1x1_from_the_n_tri-polar_grid_aapm'
+    ngrids_window: 1
+    ndays_window: 30
+  grd003:
+    gridname: 'm_stan1x1_from_the_n_tri-polar_grid_aapm'
+    ngrids_window: 3
+    ndays_window: 30
+
+  ### ------------------------------------------------------------------
+  ## obs_source_params: obs atmos and ocean data sources and time limits
+  ### ------------------------------------------------------------------
+  src001:  # default
+    startyear: 1950
+    endyear: 2020
+    obs_atmos_source: "era5"
+    obs_ocean_source: "noaa"  # other option: gtsm
+    bbox: "conus"
+
+  ### ------------------------------------------------------------------
+  ## dipmac_params: dipmac parameters to use
+  ## NOTE: the marginal and acs calculations are completely separate, so 
+  ## they don't need to be repeated if you want to change one or the other
+  ### ------------------------------------------------------------------
+  dipmac001:
+    p_e: 0.05
+    P: 0.95
+    max_kblocks: 0.99  # percent of nkblocks that should be within p_e, P error.
+    lagmax: 48  # lag in hours; 48 = 2 days

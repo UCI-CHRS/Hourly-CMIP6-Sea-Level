@@ -1,0 +1,4 @@
+# use-conda: True
+keep-going: True
+printshellcmds: True
+scheduler: greedy

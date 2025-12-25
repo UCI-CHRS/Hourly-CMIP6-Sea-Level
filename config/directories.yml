@@ -1,0 +1,51 @@
+### --------------------------------------------------------------------
+## Define basic directory structure relative to BASE_DATA_PATH
+### --------------------------------------------------------------------
+dirdict:
+  00_metadata:
+    logs:
+      rawdata:
+    touchfiles:
+    missingfiles:
+  01_rawdata:
+    cmip:
+      nc:
+      wget:
+    obs:
+      atmos:
+        era5:
+      ocean:
+        noaa:
+        gtsm:
+  02_processeddata:
+    obs_atmos_era5:
+      daily:
+      hourly:
+    obs_ocean_noaa:
+      daily:
+      hourly:
+    cmip:
+    # obs_ocean_gtsm:
+  03_upsampleddata:
+    grids:
+    grd001:
+      obs_atmos_era5:
+      obs_ocean_noaa:
+      cmip:
+    # grd002
+    # grd003
+  04_params:
+    magicc:
+    dipmac_regression:
+      grd001:
+        src001:
+          # regression parameters go here
+          dipmac001:
+            # dipmac parameters here
+  05_cmip:
+    grd001_src001_dipmac001:
+      cache:
+      biascorr:
+  06_final:
+    params:
+    data:

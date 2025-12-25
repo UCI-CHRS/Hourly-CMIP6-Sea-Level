@@ -1,0 +1,16 @@
+executor: slurm
+
+jobs: 10000
+
+resources:
+  submit_slots: 3500
+
+default-resources:
+  slurm_partition: "free"
+  submit_slots: 1
+
+scheduler: greedy
+printshellcmds: True
+
+max-jobs-per-second: 2
+max-status-checks-per-second: 10

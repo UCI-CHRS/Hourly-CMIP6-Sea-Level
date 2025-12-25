@@ -1,0 +1,12 @@
+
+include: "rules/preliminaries.smk"
+
+rule all:
+    input:
+        f"{BASEDIR}/00_metadata/upsampled_data_manifest.csv"
+
+# Preprocessing
+include: "rules/run00_metadata.smk"
+include: "rules/run01_rawdata.smk"
+include: "rules/run02_processdata.smk"
+include: "rules/run03_upsample.smk"

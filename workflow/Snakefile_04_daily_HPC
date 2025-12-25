@@ -1,0 +1,409 @@
+
+import os
+from pathlib import Path
+import yaml
+import pandas as pd
+
+configfile: "config/config.yml"
+configfile: "config/directories.yml"
+configfile: "config/metadata.yml"
+
+# Get parameter sets from config file
+SRC_CONFIG = config['metadata_keys'][config['obs_source_params']]
+GRD_CONFIG = config['metadata_keys'][config['grid_params']]
+DIPMAC_CONFIG = config['metadata_keys'][config['dipmac_params']]
+BASEDIR = config['BASE_DATA_PATH']
+
+
+# Generate all filenames
+manifest_file = f"{BASEDIR}/00_metadata/valid_cmip_lat_lons_manifest.tsv"
+df = pd.read_csv(manifest_file, sep="\t")
+param_caches = [f"{BASEDIR}/00_metadata/param_available_latlons_manifest.csv"]
+files = []
+cache_input = []
+for r in df.itertuples():
+    for margfamily in config['comboparams']['marginalfamilies']:
+        actf = (
+            f"{BASEDIR}/05_cmip/{config['grid_params']}_"
+            f"{config['obs_source_params']}_{config['dipmac_params']}/"
+            f"cache/cmip_dipmac_cache_actf_marg_{margfamily}.pkl"
+        )
+        nkblocks = (
+            f"{BASEDIR}/05_cmip/{config['grid_params']}_"
+            f"{config['obs_source_params']}_{config['dipmac_params']}/"
+            f"cache/cmip_dipmac_cache_nkblocks_marg_{margfamily}.pkl"
+        )
+        marg_df = (
+            f"{BASEDIR}/05_cmip/{config['grid_params']}_"
+            f"{config['obs_source_params']}_{config['dipmac_params']}/"
+            f"{r.model}_{r.ripf}_{r.exp}/"
+            f"ntr_cmip_params_marg_{margfamily}_lat_{r.lat}_lon_{r.lon}.csv"
+        )
+        files += [actf, nkblocks, marg_df]
+    for acsfamily in config['comboparams']['acsfamilies']:
+        acs_df = (
+            f"{BASEDIR}/04_params/dipmac_regression/"
+            f"{config['grid_params']}/{config['obs_source_params']}/"
+            f"{config['dipmac_params']}/"
+            f"lat_{r.lat}_lon_{r.lon}_ntr_hourly_dipmac_acs_params_{acsfamily}.csv"
+        )
+        files.append(acs_df)
+
+
+def dipmaccache_input(wc):
+    files = [
+        f"{BASEDIR}/05_cmip/{config['grid_params']}_"
+        f"{config['obs_source_params']}_{config['dipmac_params']}/"
+        f"{r.model}_{r.ripf}_{r.exp}/"
+        f"ntr_cmip_params_marg_{wc.margfamily}_lat_{r.lat}_lon_{r.lon}.csv"
+        for r in df.itertuples()
+    ]
+    return files
+
+
+rule all:
+    input:
+        f"{BASEDIR}/00_metadata/run06makedailysealevel.done",
+        [
+            f"{BASEDIR}/05_cmip/{config['grid_params']}_"
+            f"{config['obs_source_params']}_{config['dipmac_params']}/"
+            f"cache/nkblocks_{margfamily}_mmap.done"
+            for margfamily in config['comboparams']['marginalfamilies']
+        ]
+
+
+rule makeall:
+    input:
+        files + [
+            f"{BASEDIR}/05_cmip/{config['grid_params']}_"
+            f"{config['obs_source_params']}_{config['dipmac_params']}/"
+            f"cache/nkblocks_{margfamily}_mmap.done"
+            for margfamily in config['comboparams']['marginalfamilies']
+        ]
+    output:
+        touch(f"{BASEDIR}/00_metadata/run06makedailysealevel.done")
+
+
+rule dailyntrcmipdists:
+    input:
+        (
+            f"{BASEDIR}/05_cmip/{config['grid_params']}_"
+            f"{config['obs_source_params']}_{config['dipmac_params']}/"
+            "{model}_{ripf}_{exp}/"
+            "ntr_daily_lat_{lat}_lon_{lon}.csv"
+        )
+    output:
+        (
+            f"{BASEDIR}/05_cmip/{config['grid_params']}_"
+            f"{config['obs_source_params']}_{config['dipmac_params']}/"
+            "{model}_{ripf}_{exp}/"
+            "ntr_daily_dists_marg_{marg}_lat_{lat}_lon_{lon}.csv"
+        )
+    params:
+        ndays = GRD_CONFIG['ndays_window'],
+        sy = SRC_CONFIG['startyear'],
+        ey = SRC_CONFIG['endyear']
+    script:
+        "scripts/run05d_dailyntrcmip_dists.py"
+
+
+rule dipmaccmipparams:
+    """Calculate dipmac marginal parameter shifts for each CMIP model.
+    """
+    input:
+        marg_params_hourly_obs = (
+            f"{BASEDIR}/04_params/dipmac_regression/"
+            f"{config['grid_params']}/{config['obs_source_params']}/"
+            f"{config['dipmac_params']}/"
+            "lat_{lat}_lon_{lon}_ntr_hourly_dipmac_marg_params_{margfamily}.csv"
+        ),
+        marg_params_daily_obs = (
+            f"{BASEDIR}/04_params/dipmac_regression/"
+            f"{config['grid_params']}/{config['obs_source_params']}/"
+            f"{config['dipmac_params']}/"
+            "lat_{lat}_lon_{lon}_ntr_daily_dipmac_marg_params_{margfamily}.csv"
+        ),
+        marg_params_daily_cmip = (
+            f"{BASEDIR}/05_cmip/{config['grid_params']}_"
+            f"{config['obs_source_params']}_{config['dipmac_params']}/"
+            "{model}_{ripf}_{exp}/"
+            "ntr_daily_dists_marg_{margfamily}_lat_{lat}_lon_{lon}.csv"
+        )
+    output:
+        output_cmip_params_csv = (
+            f"{BASEDIR}/05_cmip/{config['grid_params']}_"
+            f"{config['obs_source_params']}_{config['dipmac_params']}/"
+            "{model}_{ripf}_{exp}/"
+            "ntr_cmip_params_marg_{margfamily}_lat_{lat}_lon_{lon}.csv"
+        )
+    script:
+        "scripts/run06a_dipmaccmipparams.py"
+
+
+def dipmac_batch_files(wildcards):
+    import pandas as pd
+    parquet_file = (
+        f"{BASEDIR}/05_cmip/{config['grid_params']}_"
+        f"{config['obs_source_params']}_{config['dipmac_params']}/"
+        f"cache/cmip_dipmac_marginals_batched_{wildcards.margfamily}.parquet"
+    )
+    df = pd.read_parquet(parquet_file)
+    # Ensure batch IDs are integers to match filenames
+    batch_ids = list(set(sorted(df["batch"].astype(int).tolist())))
+    return [
+        f"{BASEDIR}/05_cmip/{config['grid_params']}_"
+        f"{config['obs_source_params']}_{config['dipmac_params']}/"
+        f"cache/cmip_dipmac_cache_nkblocks_marg_{wildcards.margfamily}_batch{b}.csv"
+        for b in batch_ids
+    ]
+
+
+def dipmac_batches(wildcards):
+    parquet_file = f"{BASEDIR}/05_cmip/{config['grid_params']}_"
+    parquet_file += f"{config['obs_source_params']}_{config['dipmac_params']}/"
+    parquet_file += f"cache/cmip_dipmac_marginals_batched_{wildcards.margfamily}.parquet"
+    df = pd.read_parquet(parquet_file)
+    return sorted(df["batch"].astype(int).tolist())
+
+
+rule dipmaccache_marginal_batches:
+    """
+    Collect unique CMIP marginal parameters and assign batch IDs.
+    """
+    input:
+        dipmaccache_input = dipmaccache_input,
+        space_done = f"{BASEDIR}/00_metadata/cmip_space.done"
+    output:
+        batched_marginals = (
+            f"{BASEDIR}/05_cmip/{config['grid_params']}_"
+            f"{config['obs_source_params']}_{config['dipmac_params']}/"
+            "cache/cmip_dipmac_marginals_batched_{margfamily}.parquet"
+        )
+    params:
+        batch_size = 10000
+    script:
+        "scripts/make_dipmac_marginal_batches.py"
+
+
+rule dipmaccacheactpnts:
+    """Cache DiPMaC actpnts calculations (rounded to 2 decimal place)
+    for the unique set of CMIP marginal distribution parameters
+    to speed up computation.
+    """
+    input:
+        batched_marginals = (
+            f"{BASEDIR}/05_cmip/{config['grid_params']}_"
+            f"{config['obs_source_params']}_{config['dipmac_params']}/"
+            "cache/cmip_dipmac_marginals_batched_{margfamily}.parquet"
+        )
+    output:
+        actpnts = (
+            f"{BASEDIR}/05_cmip/{config['grid_params']}_"
+            f"{config['obs_source_params']}_{config['dipmac_params']}/"
+            "cache/cmip_dipmac_cache_actpnts_marg_{margfamily}_batch{batch}.csv"
+        )
+    params:
+        batch = "{batch}"
+    resources:
+        mem_mb = 12000,
+        cpus = 24
+    script:
+        "scripts/run06b_dipmaccacheactpnts.py"
+
+
+rule dipmaccachenkblocks:
+    """
+    Cache DiPMaC nkblocks for ONE batch of marginal parameters.
+    """
+    input:
+        batched_marginals = (
+            f"{BASEDIR}/05_cmip/{config['grid_params']}_"
+            f"{config['obs_source_params']}_{config['dipmac_params']}/"
+            "cache/cmip_dipmac_marginals_batched_{margfamily}.parquet"
+        )
+    output:
+        nkblocks = (
+            f"{BASEDIR}/05_cmip/{config['grid_params']}_"
+            f"{config['obs_source_params']}_{config['dipmac_params']}/"
+            "cache/cmip_dipmac_cache_nkblocks_marg_{margfamily}_batch{batch}.csv"
+        )
+    params:
+        p_e = DIPMAC_CONFIG['p_e'],
+        P = DIPMAC_CONFIG['P'],
+        batch = "{batch}"
+    resources:
+        mem_mb = 12000,
+        cpus = 24
+    script:
+        "scripts/run06b_dipmaccachenkblocks.py"
+
+
+rule dipmaccachenkblocks_merge:
+    input:
+        dipmac_batch_files
+    output:
+        nkblocks = (
+            f"{BASEDIR}/05_cmip/{config['grid_params']}_"
+            f"{config['obs_source_params']}_{config['dipmac_params']}/"
+            "cache/cmip_dipmac_cache_nkblocks_marg_{margfamily}.csv"
+        )
+    shell:
+        """
+        head -n 1 {input[0]} > {output}
+        tail -n +2 -q {input} >> {output}
+        """
+
+
+rule dipmaccacheactf:
+    """Cache DiPMaC actf calculations for the unique set of
+    actpnts to speed up computation.
+    """
+    input:
+        actpnts = (
+            f"{BASEDIR}/05_cmip/{config['grid_params']}_"
+            f"{config['obs_source_params']}_{config['dipmac_params']}/"
+            "cache/cmip_dipmac_cache_actpnts_marg_{margfamily}_batch{batch}.csv"
+        )
+    output:
+        actfpara = (
+            f"{BASEDIR}/05_cmip/{config['grid_params']}_"
+            f"{config['obs_source_params']}_{config['dipmac_params']}/"
+            "cache/cmip_dipmac_cache_actf_marg_{margfamily}_batch{batch}.csv"
+        ),
+    params:
+        batch = "{batch}"
+    resources:
+        mem_mb = 12000,
+        cpus = 24
+    script:
+        "scripts/run06c_dipmaccacheactf.py"
+
+
+def dipmac_actf_batch_files(wildcards):
+    parquet_file = (
+        f"{BASEDIR}/05_cmip/{config['grid_params']}_"
+        f"{config['obs_source_params']}_{config['dipmac_params']}/"
+        f"cache/cmip_dipmac_marginals_batched_{wildcards.margfamily}.parquet"
+    )
+    df = pd.read_parquet(parquet_file)
+    batch_ids = sorted(df["batch"].astype(int).unique())
+
+    return [
+        f"{BASEDIR}/05_cmip/{config['grid_params']}_"
+        f"{config['obs_source_params']}_{config['dipmac_params']}/"
+        f"cache/cmip_dipmac_cache_actf_marg_{wildcards.margfamily}_batch{b}.csv"
+        for b in batch_ids
+    ]
+
+
+rule dipmaccacheactf_merge:
+    input:
+        dipmac_actf_batch_files
+    output:
+        actf = (
+            f"{BASEDIR}/05_cmip/{config['grid_params']}_"
+            f"{config['obs_source_params']}_{config['dipmac_params']}/"
+            "cache/cmip_dipmac_cache_actf_marg_{margfamily}.csv"
+        )
+    shell:
+        """
+        head -n 1 {input[0]} > {output}
+        tail -n +2 -q {input} >> {output}
+        """
+
+
+rule dipmacpickle_csv2parquet:
+    input:
+        actf_cache_csv = (
+            f"{BASEDIR}/05_cmip/{config['grid_params']}_"
+            f"{config['obs_source_params']}_{config['dipmac_params']}/"
+            "cache/cmip_dipmac_cache_actf_marg_{margfamily}.csv"
+        ),
+        nkblocks_cache_csv = (
+            f"{BASEDIR}/05_cmip/{config['grid_params']}_"
+            f"{config['obs_source_params']}_{config['dipmac_params']}/"
+            "cache/cmip_dipmac_cache_nkblocks_marg_{margfamily}.csv"
+        )
+    output:
+        actf_cache_parquet = (
+            f"{BASEDIR}/05_cmip/{config['grid_params']}_"
+            f"{config['obs_source_params']}_{config['dipmac_params']}/"
+            "cache/cmip_dipmac_cache_actf_marg_{margfamily}.parquet"
+        ),
+        nkblocks_cache_parquet = (
+            f"{BASEDIR}/05_cmip/{config['grid_params']}_"
+            f"{config['obs_source_params']}_{config['dipmac_params']}/"
+            "cache/cmip_dipmac_cache_nkblocks_marg_{margfamily}.parquet"
+        )
+    run:
+        import polars as pl
+        pl.scan_csv(input.nkblocks_cache_csv).sink_parquet(
+            output.nkblocks_cache_parquet,
+            compression="zstd",
+            row_group_size=100_000
+        )
+        pl.scan_csv(input.actf_cache_csv).sink_parquet(
+            output.actf_cache_parquet,
+            compression="zstd",
+            row_group_size=100_000
+        )
+
+
+rule parquet2npy:
+    input:
+        nkblocks_cache_csv = (
+            f"{BASEDIR}/05_cmip/{config['grid_params']}_"
+            f"{config['obs_source_params']}_{config['dipmac_params']}/"
+            "cache/cmip_dipmac_cache_nkblocks_marg_{margfamily}.parquet"
+        )
+    output:
+        touch(
+            f"{BASEDIR}/05_cmip/{config['grid_params']}_"
+            f"{config['obs_source_params']}_{config['dipmac_params']}/"
+            "cache/nkblocks_{margfamily}_mmap.done"
+        )
+    params:
+        outdir = (
+            f"{BASEDIR}/05_cmip/{config['grid_params']}_"
+            f"{config['obs_source_params']}_{config['dipmac_params']}/"
+            "cache/cmip_dipmac_cache_nkblocks_marg_{margfamily}_mmap/"
+        ),
+        maxkblocks = DIPMAC_CONFIG['max_kblocks']
+    shell:
+        """
+        python workflow/scripts/parquet2npy.py {input} {params.outdir} \
+            --max-kblocks {params.maxkblocks} \
+            --distribution {wildcards.margfamily}
+        """
+
+
+rule dipmacpicklecache:
+    input:
+        actf_cache_parquet = (
+            f"{BASEDIR}/05_cmip/{config['grid_params']}_"
+            f"{config['obs_source_params']}_{config['dipmac_params']}/"
+            "cache/cmip_dipmac_cache_actf_marg_{margfamily}.parquet"
+        ),
+        nkblocks_cache_parquet = (
+            f"{BASEDIR}/05_cmip/{config['grid_params']}_"
+            f"{config['obs_source_params']}_{config['dipmac_params']}/"
+            "cache/cmip_dipmac_cache_nkblocks_marg_{margfamily}.parquet"
+        )
+    output:
+        nkblocks_cache_pkl = (
+            f"{BASEDIR}/05_cmip/{config['grid_params']}_"
+            f"{config['obs_source_params']}_{config['dipmac_params']}/"
+            "cache/cmip_dipmac_cache_nkblocks_marg_{margfamily}.pkl"
+        ),
+        actf_cache_pkl = (
+            f"{BASEDIR}/05_cmip/{config['grid_params']}_"
+            f"{config['obs_source_params']}_{config['dipmac_params']}/"
+            "cache/cmip_dipmac_cache_actf_marg_{margfamily}.pkl"
+        )
+    params:
+        max_kblocks = DIPMAC_CONFIG['max_kblocks'],
+    # resources:
+    #     mem_mb = 64000
+    script:
+        "scripts/run06d_dipmacpicklecache.py"
+

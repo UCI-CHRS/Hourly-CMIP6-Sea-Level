@@ -1,0 +1,16 @@
+name: magicc
+channels:
+  - defaults
+  - bioconda
+  - conda-forge
+dependencies:
+  - python=3.11
+  - pip
+  - bioconda::snakemake
+  - pip:
+      - pymagicc==2.1.5
+      - scmdata==0.17.0
+      - pandas==2.2.3
+      - numpy==2.0.0
+      - openscm-units==0.6.3
+      - xarray==2025.1.2

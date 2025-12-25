@@ -1,0 +1,15 @@
+executor: slurm
+jobscript: "/data/homezvol0/ahjelmst/.config/snakemake/slurm/slurm-jobscript.sh"
+default-resources:
+    slurm_account: "amir9a_lab"
+    slurm_partition: "standard"
+    # slurm_partition: "free"
+    # mem_mb_per_cpu: 2000
+    runtime: 1440  # in minutes; 1 day
+jobs: 10000  # max number of jobs to submit at once
+scheduler: greedy
+    # time: "01:00:00"
+# Other snakemake defaults
+# use-conda: True
+printshellcmds: True
+# use_singularity: True

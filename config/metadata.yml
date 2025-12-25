@@ -1,0 +1,66 @@
+parameter_descriptions:
+  metadata_keys:
+    bbox: | 
+      xmin, ymin, xmax, ymax coordinates of spatial bounding box 
+    grid_params (grdXXX): | 
+      Parameters of the upsampling grid and moving window mapping
+    obs_source_params (srcXXX): |
+      Observed atmospheric and ocean data sources and time limits
+    dipmac_params (dipmacXXX): |
+      Dipmac parameters to use. NOTE: the marginal and acs calculations 
+      are completely separate, so they don't need to be repeated 
+      if you want to change one or the other.
+  grids:
+    gridname: | 
+      Shortened CMIP gridname. See workflow/scripts/run00b_cmipmetadata.py 
+      for the name-shortening key. 
+      Options: 
+        - n_n96_192_x_144_ll: nominal resolution is 250km
+        - m_stan1x1_from_the_n_tri-polar_grid_aapm: nominal resolution is 100 km
+    ngrids_window: |
+      Number of grid cells (defined by the gridname grid) to use in the 
+      moving window mapping. For 250km grids, this is probably 1. 
+    ndays_window: |
+      Number of days to to use in the moving window mapping. 
+      30 days uses the 15 days before and after the central date 
+  source:
+    startyear: |
+      First year of the observed data to use for parameter fitting. 
+    endyear: |
+      Last year of the observered data to use for parameter fitting.
+    obs_atmos_source: |
+      Source of the observed atmospheric data to use for parameter fitting. 
+      Options: 
+        - era5: ERA5 hourly reanalysis data
+    obs_ocean_source: |
+      Source of the observed ocean data (tides, mean sea level, total water level)
+      to use for parameter fitting (and to directly get hourly tides). 
+      Options: 
+        - noaa: NOAA Tides and Currents dataset
+        - gtsm: Global Tide and Surge Model dataset
+  cmip:
+    cmipexperiments: |  
+      List of CMIP experiment names to use per group.
+      For attribution: ["historical", "hist-nat"]
+      For future projections: ["historical", "ssp126", "ssp245", "ssp370", "ssp434", "ssp585"]
+  dipmac: 
+    p_e: | 
+      Error tolerance for matching the k-block mean to the daily value.
+    P: |
+      Confidence level of k-block match. 
+    max_kblocks: |
+      Maximum number of time to . 
+      Overrides the number of k-blocks determined by p_e and P
+    lagmax: |
+      Maximum number of values (hours) to include in the 
+      autocorrelation structure.
+    marginalfamilies: |
+      Marginal distribution to fit to hourly data
+      Some options:
+      - skewnorm
+      - gamma
+    acsfamilies: |
+      Distribution function to fit to the autocorrelation function. 
+      Some options: 
+      - paretoII
+      - weibull

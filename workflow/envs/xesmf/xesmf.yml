@@ -1,0 +1,31 @@
+name: xesmf
+channels:
+  - defaults
+dependencies:
+  - python=3.11
+  - pip
+  - bioconda::snakemake
+  - conda-forge::gdal=3.8.5
+  - conda-forge::proj
+  - conda-forge::geos
+  - conda-forge::esmpy
+  - conda-forge::xesmf
+  - conda-forge::libgdal
+  - conda-forge::netCDF4
+  - pip:  # NOTE: May not need all of these
+      - affine==2.4.0
+      - cf_xarray==0.10.0
+      - cffi==1.17.1
+      - cftime==1.6.4.post1
+      - dask[array,dataframe,distributed]==2024.11.2
+      - f90nml==1.4.4
+      - geopandas==1.0.1
+      - numpy==2.0.0
+      - pandas==2.2.3
+      - rasterio==1.4.3
+      - regionmask==0.13.0
+      - rioxarray==0.18.2
+      - shapely==2.0.7
+      - xarray==2025.1.2
+      - xarrayutils==2.0.1
+      - xgcm==0.6.1
