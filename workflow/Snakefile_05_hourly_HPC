@@ -280,7 +280,7 @@ rule interpolate_msl:
             f"{BASEDIR}/06_final/data/{{model}}_{{ripf}}_{{exp}}_{{marg}}_{{acs}}_msl.nc"
         )
     resources:
-        mem_mb = 12000
+        mem_mb = 12000  # NOTE: some runs require 16000 (above free tier on my HPC)
     script:
         "scripts/run07b_interpolatemsl.py"
 
