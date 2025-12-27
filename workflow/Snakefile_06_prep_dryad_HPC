@@ -1,0 +1,43 @@
+
+from pathlib import Path
+
+BASE_DIR = "/share/crsp/lab/amir9a/ahjelmst/cmipsl"
+BASE_DIR_DRYAD = Path(BASE_DIR).joinpath("07_dryad")
+Path(BASE_DIR).joinpath("07_dryad").mkdir(exist_ok=True)
+all_nc_files = list(Path(BASE_DIR).glob("06_final/data/*.nc"))
+model_ripf_exp = list({"_".join(f.name.split("_", 3)[:3]) for f in all_nc_files})
+all_zip_files = [BASE_DIR_DRYAD.joinpath(f"{mre}.zip") for mre in model_ripf_exp]
+
+
+rule all:
+    input: 
+        all_zip_files
+
+
+rule compress_one_mre:
+    output:
+        f"{BASE_DIR_DRYAD}/{{mre}}.zip"
+    params:
+        BASE_DIR_06 = f"{BASE_DIR}/06_final/data",
+        BASE_DIR_07 = BASE_DIR_DRYAD
+    resources:
+        mem_mb = 12000
+    run:
+        from pathlib import Path
+        import shutil
+        import xarray as xr
+        mre = wildcards['mre']
+        folder = Path(params['BASE_DIR_07']).joinpath(f"{mre}")
+        folder.mkdir(exist_ok=True)
+        mre_files = list(Path(params['BASE_DIR_06']).glob(f"{mre}*.nc"))
+        for f in mre_files:
+            f_out = folder.joinpath(f.name)
+            ds = xr.open_dataset(f)
+            ds_compact = (
+                ds.stack(point=("x", "y"))
+                .dropna("point", how="all")
+                .reset_index("point")
+            )
+            ds_compact.to_netcdf(f_out)
+        # Zip 
+        shutil.make_archive(str(folder), 'zip', folder)
